@@ -1,101 +1,47 @@
-import os
-from flask import Flask, render_template, session, redirect, url_for
-from flask_bootstrap import Bootstrap
-from flask_moment import Moment
-from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField
-from wtforms.validators import DataRequired
+from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-
-basedir = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'hard to guess string'
-app.config['SQLALCHEMY_DATABASE_URI'] =\
-    'sqlite:///' + os.path.join(basedir, 'data.sqlite')
+
+# Configuração do banco de dados
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///alunos.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-bootstrap = Bootstrap(app)
-moment = Moment(app)
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
-
-class Role(db.Model):
-    __tablename__ = 'roles'
+# Modelo de dados para Alunos
+class Aluno(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(64), unique=True)
-    users = db.relationship('User', backref='role', lazy='dynamic')
+    nome = db.Column(db.String(100), nullable=False)
+    disciplina = db.Column(db.String(10), nullable=False)
 
-    def __repr__(self):
-        return '<Role %r>' % self.name
-
-
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), unique=True, index=True)
-    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
-
-    def __repr__(self):
-        return '<User %r>' % self.username
-
-
-class NameForm(FlaskForm):
-    name = StringField('What is your name?', validators=[DataRequired()])
-    submit = SubmitField('Submit')
-
-
-@app.shell_context_processor
-def make_shell_context():
-    return dict(db=db, User=User, Role=Role)
-
-
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
-
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    return render_template('500.html'), 500
-
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    form = NameForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.name.data).first()
-        if user is None:
-            user_role = Role.query.filter_by(name='User').first()
+    dados = {
+        'nome': 'Luis de Moura Neto',
+        'prontuario': 'PT3019861',
+        'data_hora': datetime.now().strftime('%d/%m/%Y %H:%M'),
+    }
+    return render_template('index.html', dados=dados)
 
-            if user_role is None:
-                user_role = Role(name='User')
-                db.session.add(user_role)
-                db.session.commit()
+@app.route('/cadastro_alunos', methods=['GET', 'POST'])
+def cadastro_alunos():
+    if request.method == 'POST':
+        nome_aluno = request.form['nome']
+        disciplina_aluno = request.form['disciplina']
+        novo_aluno = Aluno(nome=nome_aluno, disciplina=disciplina_aluno)
+        db.session.add(novo_aluno)
+        db.session.commit()
+        return redirect(url_for('cadastro_alunos'))
+    
+    alunos = Aluno.query.all()
+    return render_template('cadastro_alunos.html', alunos=alunos)
 
-            user = User(username=form.name.data, role=user_role)
-            db.session.add(user)
-            db.session.commit()
-            session['known'] = False
-        else:
-            if user.role is None:
-                user_role = Role.query.filter_by(name='User').first()
+@app.route('/cadastro_professores')
+@app.route('/cadastro_disciplinas')
+def nao_disponivel():
+    return render_template('nao_disponivel.html')
 
-                if user_role is None:
-                    user_role = Role(name='User')
-                    db.session.add(user_role)
-                    db.session.commit()
-
-                user.role = user_role
-                db.session.commit()
-
-            session['known'] = True
-        session['name'] = form.name.data
-        return redirect(url_for('index'))
-
-    users = User.query.all()
-
-    return render_template('index.html', form=form, name=session.get('name'),
-                           known=session.get('known', False), users=users)
+if __name__ == '__main__':
+    db.create_all()
+    app.run(debug=True)
